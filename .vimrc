@@ -43,21 +43,20 @@ set history=700
 " Set to auto read when a file is changed from the outside
 set autoread
 
-" With a map leader it's possible to do extra key combinations
-" like <leader>w saves the current file
-if ! exists("mapleader")
-  let mapleader = ","
-endif
-
-if ! exists("g:mapleader")
-  let g:mapleader = ","
-endif
+let mapleader = " "
+let g:mapleader = " "
 
 " Leader key timeout
-set tm=2000
+set tm=500
 
-" Allow the normal use of "," by pressing it twice
-noremap ,, ,
+" Save
+nnoremap <leader>s :w<CR>
+
+" Close
+nnoremap <leader>w :q<CR>
+
+" Force close without save
+nnoremap <leader>ww :q!<CR>
 
 " Use par for prettier line formatting
 set formatprg=par
@@ -99,17 +98,20 @@ Plug 'int3/vim-extradite'
 " Bars, panels, and files
 Plug 'scrooloose/nerdtree'
 Plug 'vim-airline/vim-airline'
+Plug 'vim-airline/vim-airline-themes'
 Plug 'ctrlpvim/ctrlp.vim'
 Plug 'majutsushi/tagbar'
 
 " Text manipulation
 Plug 'vim-scripts/Align'
 Plug 'simnalamburt/vim-mundo'
-Plug 'tpope/vim-commentary'
+Plug 'scrooloose/nerdcommenter'
 Plug 'godlygeek/tabular'
 Plug 'michaeljsmith/vim-indent-object'
 Plug 'easymotion/vim-easymotion'
 Plug 'ConradIrwin/vim-bracketed-paste'
+Plug 'terryma/vim-multiple-cursors'
+Plug 'jiangmiao/auto-pairs'
 
 " Allow pane movement to jump out of vim into tmux
 Plug 'christoomey/vim-tmux-navigator'
@@ -122,9 +124,13 @@ Plug 'eagletmt/neco-ghc', { 'for': 'haskell' }
 Plug 'Twinside/vim-hoogle', { 'for': 'haskell' }
 Plug 'mpickering/hlint-refactor-vim', { 'for': 'haskell' }
 
-" Colorscheme
-Plug 'vim-scripts/wombat256.vim'
+" Purescript
+Plug 'raichoo/purescript-vim'
 
+" Typescript
+Plug 'leafgarland/typescript-vim'
+
+let g:airline_theme='hifructose'
 " Custom bundles
 
 if filereadable(hvn_user_plugins)
@@ -137,6 +143,14 @@ call plug#end()
 
 " VIM user interface {{{
 
+:imap jk <Esc>
+
+:nnoremap L $
+:nnoremap H 0
+:nnoremap K gg
+:nnoremap J G
+
+:set timeoutlen=250
 " Set 7 lines to the cursor - when moving vertically using j/k
 set so=7
 
@@ -214,24 +228,41 @@ if $TERM_PROGRAM =~ "iTerm"
   let &t_SI = "\<Esc>]50;CursorShape=1\x7" " Vertical bar in insert mode
   let &t_EI = "\<Esc>]50;CursorShape=0\x7" " Block in normal mode
 endif
+
+function! WrapForTmux(s)
+  if !exists('$TMUX')
+    return a:s
+  endif
+
+  let tmux_start = "\<Esc>Ptmux;"
+  let tmux_end = "\<Esc>\\"
+
+  return tmux_start . substitute(a:s, "\<Esc>", "\<Esc>\<Esc>", 'g') . tmux_end
+endfunction
+
+let &t_SI .= WrapForTmux("\<Esc>[?2004h")
+let &t_EI .= WrapForTmux("\<Esc>[?2004l")
+
+function! XTermPasteBegin()
+  set pastetoggle=<Esc>[201~
+  set paste
+  return ""
+endfunction
+
+inoremap <special> <expr> <Esc>[200~ XTermPasteBegin()<F29>
+
 " }}}
 
 " Colors and Fonts {{{
 
 try
-  colorscheme wombat256mod
+  colorscheme hifructose
 catch
 endtry
 
-" Adjust signscolumn to match wombat
-hi! link SignColumn LineNr
-
-" Use pleasant but very visible search hilighting
-hi Search ctermfg=white ctermbg=173 cterm=none guifg=#ffffff guibg=#e5786d gui=none
+" Use pleasant but very visible search highlighting
+hi Search ctermfg=white ctermbg=057 cterm=none guifg=#ffffff guibg=#e5786d gui=none
 hi! link Visual Search
-
-" Match wombat colors in nerd tree
-hi Directory guifg=#8ac6f2
 
 " Searing red very visible cursor
 hi Cursor guibg=red
@@ -351,6 +382,11 @@ noremap <c-k> <c-w>k
 noremap <c-j> <c-w>j
 noremap <c-l> <c-w>l
 
+" Use relative line numbers...
+:set rnu
+" ...but also display the current line number.
+:set number
+
 " Disable highlight when <leader><cr> is pressed
 " but preserve cursor coloring
 nmap <silent> <leader><cr> :noh\|hi Cursor guibg=red<cr>
@@ -367,10 +403,10 @@ augroup END
 set viminfo^=%
 
 " Open window splits in various places
-nmap <leader>sh :leftabove  vnew<CR>
-nmap <leader>sl :rightbelow vnew<CR>
-nmap <leader>sk :leftabove  new<CR>
-nmap <leader>sj :rightbelow new<CR>
+nmap <leader>\h :leftabove  vnew<CR>
+nmap <leader>\l :rightbelow vnew<CR>
+nmap <leader>-k :leftabove  new<CR>
+nmap <leader>-j :rightbelow new<CR>
 
 " Manually create key mappings (to avoid rebinding C-\)
 let g:tmux_navigator_no_mappings = 1
@@ -492,8 +528,16 @@ function! ToggleFindNerd()
 endfunction
 
 " If nerd tree is closed, find current file, if open, close it
-nmap <silent> <leader>f <ESC>:call ToggleFindNerd()<CR>
-nmap <silent> <leader>F <ESC>:NERDTreeToggle<CR>
+nmap <silent> <leader>n <ESC>:call ToggleFindNerd()<CR>
+nmap <silent> <leader>N <ESC>:NERDTreeToggle<CR>
+
+let NERDSpaceDelims=1
+let NERDTreeIgnore=['\.pyc$', '\.hi$', '\.o$']
+let NERDTreeShowHidden=1
+
+"Open NERDTree if no files specified
+autocmd StdinReadPre * let s:std_in=1
+autocmd VimEnter * if argc() == 0 && !exists("s:std_in") | NERDTree | endif
 
 " }}}
 
